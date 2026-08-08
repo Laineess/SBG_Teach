@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta AWS */
+  --color-ink-900: #131a22;
+  --color-ink-800: #1b2530;
+  --color-ink-700: #232f3e;
+  --color-ink-600: #35495e;
+  --color-ink-400: #6b7c8f;
+
+  --color-orange-500: #ff9900;
+  --color-orange-600: #ec7211;
+  --color-orange-100: #fff3e0;
+
+  --color-teal-500: #01a88d;
+  --color-purple-500: #8c4fff;
+  --color-sky-500: #0972d3;
+
+  --font-sans: "Amazon Ember", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #f4f6f8;
+  color: var(--color-ink-800);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Malla decorativa del encabezado */
+.hero-grid {
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(255, 153, 0, 0.22), transparent 45%),
+    radial-gradient(circle at 85% 10%, rgba(1, 168, 141, 0.18), transparent 50%),
+    linear-gradient(180deg, var(--color-ink-700), var(--color-ink-900));
+}
+
+@keyframes subir {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animar-entrada {
+  animation: subir 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animar-entrada {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Impresión / exportar a PDF */
+@media print {
+  body {
+    background: #fff;
+  }
+  .no-imprimir {
+    display: none !important;
+  }
+  .imprimir-completo {
+    grid-column: 1 / -1 !important;
+    max-width: none !important;
+  }
+  .semana-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #d5dbdb !important;
+  }
+}

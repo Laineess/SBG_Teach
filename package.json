@@ -1,0 +1,23 @@
+{
+  "name": "aws-uaemex-study-path-coach",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Coach de rutas de estudio AWS para estudiantes UAEMex (API Gateway + Lambda + Amazon Bedrock)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c yellow,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace backend",
+    "dev:web": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace backend && npm run build --workspace frontend",
+    "typecheck": "npm run typecheck --workspace backend && npm run typecheck --workspace frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

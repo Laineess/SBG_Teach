@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS UAEMex Study Path Coach — API Gateway (HTTP API) + Lambda + Amazon Bedrock,
+  con hosting estático del frontend en S3 + CloudFront.
+
+Parameters:
+  ModeloBedrock:
+    Type: String
+    Default: anthropic.claude-opus-5
+    Description: ID del modelo de Amazon Bedrock a invocar.
+  EsfuerzoModelo:
+    Type: String
+    Default: medium
+    AllowedValues: [low, medium, high, xhigh, max]
+    Description: Nivel de esfuerzo del modelo (costo vs. profundidad).
+  OrigenCors:
+    Type: String
+    Default: "*"
+    Description: Origen permitido por CORS. En producción, la URL de CloudFront.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    Timeout: 60
+    MemorySize: 1024
+    Tracing: Active
+
+Resources:
+  # ---------- Backend ----------
+  GenerateLearningPathFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: esm
+        Minify: true
+        Target: node22
+        OutExtension:
+          - .js=.mjs
+        EntryPoints:
+          - src/handler.ts
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-generateLearningPath"
+      CodeUri: ../backend
+      Handler: handler.handler
+      Description: Recibe el perfil del estudiante y genera su ruta de estudio con Amazon Bedrock.
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref ModeloBedrock
+          BEDROCK_EFFORT: !Ref EsfuerzoModelo
+          CORS_ORIGIN: !Ref OrigenCors
+          NODE_OPTIONS: --enable-source-maps
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+      Events:
+        PostRuta:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /ruta
+            Method: POST
+        GetSalud:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /salud
+            Method: GET
+
+  GenerateLearningPathLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-generateLearningPath"
+      RetentionInDays: 14
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowOrigins: [!Ref OrigenCors]
+        AllowHeaders: [content-type]
+        AllowMethods: [POST, GET, OPTIONS]
+      Throttle:
+        BurstLimit: 20
+        RateLimit: 10
+
+  # ---------- Frontend estático ----------
+  SitioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  SitioOac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  SitioDistribucion:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: s3-sitio
+            DomainName: !GetAtt SitioBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt SitioOac.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: s3-sitio
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          # Managed-CachingOptimized
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  SitioBucketPolitica:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SitioBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${SitioBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SitioDistribucion}"
+
+Outputs:
+  ApiUrl:
+    Description: URL base de la API. Úsala como VITE_API_URL al construir el frontend.
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  EndpointRuta:
+    Description: Endpoint que consume el frontend.
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/ruta"
+  SitioBucketNombre:
+    Description: Bucket donde se sube el build del frontend (aws s3 sync frontend/dist).
+    Value: !Ref SitioBucket
+  SitioUrl:
+    Description: URL pública del frontend.
+    Value: !Sub "https://${SitioDistribucion.DomainName}"
