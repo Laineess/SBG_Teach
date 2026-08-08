@@ -69,9 +69,11 @@ npm run dev
 ```
 
 - Frontend: http://localhost:5173
-- API: http://localhost:3000 (`POST /ruta`, `GET /salud`)
+- API: http://localhost:3001 (`POST /ruta`, `GET /salud`)
 
 Vite proxea `/api` hacia la API local, así que no hay que configurar CORS en desarrollo.
+
+`npm run dev` levanta ambos con [`scripts/dev.mjs`](scripts/dev.mjs), que invoca npm directamente con `process.execPath` en lugar de pasar por una shell. Así funciona aunque el PATH del sistema esté incompleto (ver Problemas comunes).
 
 ### Modo demo sin AWS
 
@@ -97,6 +99,37 @@ AWS_SECRET_ACCESS_KEY=...
 ```
 
 Antes de la demo, verifica en la consola de Amazon Bedrock → **Model access** que el modelo esté habilitado en esa región. Si el modelo del evento es otro, solo cambia `BEDROCK_MODEL_ID` (los IDs de Bedrock llevan prefijo `anthropic.`).
+
+---
+
+## Problemas comunes
+
+**`spawn cmd.exe ENOENT` al correr scripts de npm (Windows).**
+Al PATH del sistema le faltan los directorios de Windows. Verifica con:
+
+```powershell
+$env:Path -split ';' -contains 'C:\Windows\System32'
+```
+
+Si sale `False`, agrégalos al PATH de usuario (no necesita permisos de administrador):
+
+```powershell
+$faltantes = @("$env:SystemRoot\System32", $env:SystemRoot, "$env:SystemRoot\System32\Wbem", "$env:SystemRoot\System32\WindowsPowerShell\v1.0")
+$actual = [Environment]::GetEnvironmentVariable('Path','User')
+[Environment]::SetEnvironmentVariable('Path', (($faltantes + $actual) -join ';'), 'User')
+```
+
+Cierra y vuelve a abrir la terminal. Este proyecto ya no depende de `cmd.exe`, pero muchas otras herramientas sí.
+
+**`EADDRINUSE: address already in use :::3001`.**
+Otro proceso tiene ese puerto. Cambia `PORT` en `backend/.env` y ajusta el mismo puerto en el proxy de [`frontend/vite.config.ts`](frontend/vite.config.ts). Para ver qué lo ocupa:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3001 -State Listen | Select-Object OwningProcess
+```
+
+**La ruta no se genera y sale error 403 o 404 de Bedrock.**
+El modelo no está habilitado en esa región. Habilítalo en la consola de Amazon Bedrock → Model access, o pon `MOCK=1` en `backend/.env` para usar la ruta de ejemplo.
 
 ---
 

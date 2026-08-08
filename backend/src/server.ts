@@ -10,7 +10,7 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { handler } from "./handler.js";
 
 const app = express();
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 3001);
 
 app.use(cors());
 app.use(express.json({ limit: "256kb" }));
@@ -48,9 +48,21 @@ app.post("/ruta", async (req, res) => {
     .send(resultado.body ?? "");
 });
 
-app.listen(PORT, () => {
+const servidor = app.listen(PORT, () => {
   const modo = process.env.MOCK === "1" || process.env.MOCK === "true" ? "MOCK (sin Bedrock)" : "Bedrock";
   console.log(`API local en http://localhost:${PORT}  —  modo: ${modo}`);
   console.log(`  POST http://localhost:${PORT}/ruta`);
   console.log(`  GET  http://localhost:${PORT}/salud`);
+});
+
+servidor.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(
+      `\nEl puerto ${PORT} ya está ocupado por otra aplicación.\n` +
+        `Elige otro puerto en backend/.env (por ejemplo PORT=3002) y ajusta el proxy\n` +
+        `en frontend/vite.config.ts para que apunte al mismo puerto.\n`,
+    );
+    process.exit(1);
+  }
+  throw error;
 });
